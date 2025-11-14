@@ -1,0 +1,480 @@
+# Vehicle Tracker System - 完全仕様書
+
+## プロジェクト概要
+ダンプ、トラック等の移動体（数十台〜数百台）のリアルタイム位置を、スマホからアップロードして事務所から監視するシステム
+
+---
+
+## システム構成
+
+### 1. 車両側アプリ（Flutter - Android/iOS）
+- GPS位置情報を定期的に取得してFirestoreにアップロード
+- バックグラウンドで動作継続
+- 運転手が開始/停止を制御可能
+
+### 2. バックエンド（Firebase）
+- Firestore: リアルタイムデータベース
+- Authentication: ユーザー認証
+- Hosting: 管理画面ホスティング
+
+### 3. 管理画面（React Web）
+- Google Maps上に全車両位置をリアルタイム表示
+- 車両一覧・詳細表示
+- リアルタイム更新
+
+---
+
+## 車両側アプリ仕様（Flutter）
+
+### プロジェクト基本情報
+```yaml
+name: vehicle_tracker
+description: 車両位置追跡アプリ
+version: 1.0.0
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+```
+
+### 必須パッケージ
+```yaml
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # 位置情報取得
+  geolocator: ^10.0.0
+  
+  # バックグラウンド処理
+  workmanager: ^0.5.0
+  
+  # Firebase
+  firebase_core: ^2.24.0
+  cloud_firestore: ^4.13.0
+  firebase_auth: ^4.15.0
+  
+  # 状態管理
+  provider: ^6.1.0
+  
+  # UI
+  google_fonts: ^6.1.0
+```
+
+### 機能要件
+
+#### 1. 位置情報取得
+- **更新間隔**: 
+  - 移動中: 1分間隔
+  - 停車中: 5分間隔または停止
+- **精度**: HIGH（GPS）
+- **最小移動距離**: 100m（この距離以上移動したら更新）
+
+#### 2. バックグラウンド動作
+- アプリを閉じても位置送信継続
+- OSのバッテリー最適化に対応
+- ネットワーク切断時は再接続処理
+
+#### 3. データ送信
+- Firestoreへのリアルタイムアップロード
+- オフライン時はローカルキューに保存
+- オンライン復帰時に自動送信
+
+#### 4. UI要件
+- シンプルで直感的
+- 大きなボタン（運転手でも操作しやすい）
+- 現在位置と状態を表示
+
+### 画面構成
+
+#### メイン画面
+```
+┌─────────────────────────┐
+│  Vehicle Tracker        │
+├─────────────────────────┤
+│                         │
+│  車両ID: TRUCK-001      │
+│                         │
+│  現在位置:              │
+│  緯度: 35.6812          │
+│  経度: 139.7671         │
+│                         │
+│  速度: 45 km/h          │
+│  最終更新: 10秒前       │
+│                         │
+│  Firebase: ✓ 接続中     │
+│                         │
+│  ┌───────────────────┐  │
+│  │  トラッキング開始  │  │
+│  └───────────────────┘  │
+│                         │
+│  ┌───────────────────┐  │
+│  │  トラッキング停止  │  │
+│  └───────────────────┘  │
+│                         │
+└─────────────────────────┘
+```
+
+### データモデル
+
+#### Firestoreコレクション構造
+```
+vehicles/
+  {vehicleId}/
+    - latitude: double
+    - longitude: double
+    - timestamp: Timestamp
+    - speed: double (km/h)
+    - heading: double (方角 0-360度)
+    - accuracy: double (精度 メートル)
+    - status: string ("moving" | "stopped" | "idle")
+    - batteryLevel: int (0-100)
+    - driverId: string (optional)
+```
+
+### プラットフォーム固有設定
+
+#### Android (AndroidManifest.xml)
+```xml
+<!-- 必須パーミッション -->
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.WAKE_LOCK" />
+```
+
+#### iOS (Info.plist)
+```xml
+<!-- 必須キー -->
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>車両の位置情報を追跡するために使用します</string>
+
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>バックグラウンドでも位置情報を追跡します</string>
+
+<key>NSLocationAlwaysUsageDescription</key>
+<string>配送中の位置情報を継続的に記録します</string>
+
+<key>UIBackgroundModes</key>
+<array>
+    <string>location</string>
+    <string>fetch</string>
+</array>
+```
+
+### エラーハンドリング
+
+#### 必須対応
+1. **位置情報パーミッション拒否**
+   - わかりやすいメッセージ表示
+   - 設定画面への誘導
+
+2. **ネットワーク切断**
+   - ローカルキューに保存
+   - 再接続時に自動送信
+   - 接続状態をUI表示
+
+3. **Firebase接続エラー**
+   - リトライ処理（指数バックオフ）
+   - エラーログ記録
+
+4. **バッテリー最適化**
+   - Android: ドーズモード対応
+   - iOS: バックグラウンド実行制限対応
+
+---
+
+## 管理画面仕様（React Web）
+
+### プロジェクト基本情報
+```json
+{
+  "name": "vehicle-tracking-dashboard",
+  "version": "1.0.0",
+  "description": "車両追跡管理画面"
+}
+```
+
+### 必須パッケージ
+```json
+{
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "firebase": "^10.7.0",
+    "@googlemaps/react-wrapper": "^1.1.35",
+    "@googlemaps/js-api-loader": "^1.16.2"
+  }
+}
+```
+
+### 機能要件
+
+#### 1. 地図表示
+- Google Maps統合
+- 全車両をマーカーで表示
+- マーカーアイコン:
+  - 移動中: 緑色トラックアイコン
+  - 停車中: 黄色トラックアイコン
+  - 長時間未更新: 赤色トラックアイコン
+
+#### 2. リアルタイム更新
+- Firestore onSnapshot使用
+- 新しい位置データを自動反映
+- 地図のスムーズな更新（アニメーション）
+
+#### 3. 車両情報表示
+- サイドパネルに車両一覧
+- 各車両:
+  - 車両ID
+  - 最終更新時刻
+  - 現在速度
+  - 状態（移動中/停車中）
+
+#### 4. 詳細表示
+- 車両クリックで詳細ポップアップ
+- 表示内容:
+  - 車両ID
+  - 現在位置（緯度経度）
+  - 速度
+  - 方角
+  - 最終更新時刻
+  - バッテリー残量
+
+### 画面構成
+
+```
+┌────────────────────────────────────────────┐
+│  Vehicle Tracking Dashboard          [⚙]  │
+├──────────┬─────────────────────────────────┤
+│          │                                 │
+│ 車両一覧  │                                 │
+│          │         Google Maps            │
+│ TRUCK-01 │                                 │
+│ 🟢 移動中 │      🚛 🚛                      │
+│ 45km/h   │                                 │
+│ 1分前    │             🚛                  │
+│          │                                 │
+│ TRUCK-02 │                                 │
+│ 🟡 停車中 │                                 │
+│ 0km/h    │                                 │
+│ 3分前    │                                 │
+│          │                                 │
+│ TRUCK-03 │                                 │
+│ 🟢 移動中 │                                 │
+│ 60km/h   │                                 │
+│ 30秒前   │                                 │
+│          │                                 │
+└──────────┴─────────────────────────────────┘
+```
+
+### データ取得
+
+#### Firestore リアルタイムリスナー
+```javascript
+// 擬似コード
+const unsubscribe = firestore
+  .collection('vehicles')
+  .onSnapshot((snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === 'added') {
+        // 新しい車両追加
+      }
+      if (change.type === 'modified') {
+        // 位置更新
+      }
+      if (change.type === 'removed') {
+        // 車両削除
+      }
+    });
+  });
+```
+
+### UI要件
+
+#### レスポンシブデザイン
+- PC: サイドパネル + 地図（左右分割）
+- タブレット: サイドパネル折りたたみ可能
+- スマホ: タブ切替（一覧/地図）
+
+#### パフォーマンス
+- 100台以上でもスムーズ動作
+- 地図マーカーのクラスタリング（密集時）
+- 仮想スクロール（車両一覧）
+
+---
+
+## Firebase設定
+
+### Firestoreセキュリティルール
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 車両データ
+    match /vehicles/{vehicleId} {
+      // 認証済みユーザーのみ読み取り可能
+      allow read: if request.auth != null;
+      
+      // 車両アプリからの書き込みのみ許可
+      allow write: if request.auth != null 
+                   && request.auth.token.vehicleId == vehicleId;
+    }
+  }
+}
+```
+
+### インデックス設定
+```
+コレクション: vehicles
+フィールド: timestamp (降順)
+用途: 最新位置の高速取得
+```
+
+---
+
+## 非機能要件
+
+### パフォーマンス
+- 位置更新の遅延: 5秒以内
+- 管理画面の初期ロード: 3秒以内
+- 同時接続車両数: 500台まで対応
+
+### セキュリティ
+- HTTPS通信必須
+- Firebase Authentication使用
+- 車両ごとの認証トークン
+- データ暗号化（通信・保存）
+
+### 可用性
+- アップタイム: 99.5%以上
+- オフライン耐性: ネットワーク復帰時自動同期
+
+### スケーラビリティ
+- 初期: 50台
+- 段階的拡大: 500台まで
+- Firebaseの従量課金で自動スケール
+
+---
+
+## 開発環境
+
+### 必要ツール
+- Flutter SDK 3.x以上
+- Android Studio (Android開発)
+- Xcode (iOS開発 - macOS必須)
+- Node.js 18.x以上
+- Git
+
+### 推奨エディタ
+- VS Code + Flutter/Dart拡張機能
+- または Android Studio
+
+---
+
+## デプロイ・運用
+
+### 車両アプリ
+- **Android**: Google Play Console経由
+- **iOS**: App Store Connect経由
+- 社内配布の場合: Firebase App Distributionも検討
+
+### 管理画面
+- Firebase Hosting
+- 自動デプロイ（GitHub Actions推奨）
+
+### 監視
+- Firebase Crashlytics（クラッシュレポート）
+- Firebase Analytics（使用統計）
+- Cloud Logging（エラーログ）
+
+---
+
+## コスト見積もり（100台運用時）
+
+### Firebase（月額）
+- Firestore: 読取/書込料金 = $10-20
+- Hosting: 数GB = $1-5
+- Authentication: 無料枠内
+- **小計: $15-30/月**
+
+### Google Maps API（月額）
+- Maps JavaScript API: $0-30（無料枠あり）
+- **小計: $0-30/月**
+
+### 合計: **月額 $15-60（約2,000-8,000円）**
+
+---
+
+## マイルストーン
+
+### Week 1: 車両アプリ開発
+- Day 1: 環境構築
+- Day 2-3: 基本機能実装
+- Day 4: Firebase連携
+- Day 5-7: テスト・調整
+
+### Week 2: 管理画面開発
+- Day 8-9: 画面実装
+- Day 10-11: 統合テスト
+- Day 12-14: 最適化・デバッグ
+
+### Week 3-4: 本番準備
+- 実機テスト（複数台）
+- セキュリティ監査
+- ドキュメント整備
+- リリース準備
+
+---
+
+## 補足事項
+
+### プライバシー対応
+- 運転手への位置情報取得の通知・同意
+- データ保持期間の設定（例: 30日間）
+- 個人情報保護方針の明示
+
+### 拡張機能（将来的に検討）
+- ジオフェンス（指定エリア出入り通知）
+- 走行履歴・レポート
+- 運転日報自動生成
+- 配送ルート最適化
+- ドライブレコーダー連携
+
+---
+
+## 開発時の注意点
+
+1. **バッテリー消費に注意**
+   - 更新頻度を適切に設定
+   - 停車時は送信間隔を延ばす
+
+2. **通信量の最適化**
+   - 不要なデータは送信しない
+   - データ圧縮を検討
+
+3. **エラーハンドリングを徹底**
+   - 全ての例外をキャッチ
+   - ユーザーフレンドリーなメッセージ
+
+4. **テストを十分に**
+   - 実機での長時間テスト必須
+   - バックグラウンド動作確認
+   - 電波が弱い場所でのテスト
+
+---
+
+## サポート・メンテナンス
+
+### ドキュメント
+- ユーザーマニュアル（運転手向け）
+- 管理者マニュアル（事務所向け）
+- 技術ドキュメント（開発者向け）
+
+### トラブルシューティング
+- よくある問題と解決方法をFAQとして整備
+- サポート窓口の設置
+
+---
+
+この仕様書をClaude Codeに渡して、プロジェクト全体を生成させてください。

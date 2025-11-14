@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "360430158561",
+    "project_id": "vehicle-tracker-9498c",
+    "storage_bucket": "vehicle-tracker-9498c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:360430158561:android:51f9a3ecdfe14f0d09ada0",
+        "android_client_info": {
+          "package_name": "com.yokoyama_s.truckradar"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBmoOqiMzC2le2jbiObkkJT8_XSgQNUydY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
