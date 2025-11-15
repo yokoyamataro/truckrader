@@ -172,10 +172,12 @@ class _MapScreenState extends State<MapScreen> {
         final isWeb = kIsWeb;
         final screenWidth = MediaQuery.of(context).size.width;
         final screenHeight = MediaQuery.of(context).size.height;
+        final orientation = MediaQuery.of(context).orientation;
 
-        // Web版：左右分割、スマホ版：上下分割
-        if (isWeb && screenWidth > 600) {
-          // Web版：左に地図（50%）、右に状態パネル（50%）
+        // 横向き（ランドスケープ）またはWeb版：左右分割
+        // 縦向き（ポートレート）：上下分割
+        if (orientation == Orientation.landscape || (isWeb && screenWidth > 600)) {
+          // 横向き：左に地図、右に状態パネル
           return Row(
             children: [
               // 左側：地図
@@ -191,7 +193,7 @@ class _MapScreenState extends State<MapScreen> {
             ],
           );
         } else {
-          // スマホ版：上に地図（50%）、下に状態パネル（50%）
+          // 縦向き：上に地図、下に状態パネル
           return Column(
             children: [
               // 上側：地図
