@@ -104,6 +104,12 @@ class LocationService {
       (Position position) {
         _lastPosition = position;
         print('位置情報更新（ストリーム）: ${position.latitude}, ${position.longitude}, 速度: ${(position.speed * 3.6).toStringAsFixed(1)}km/h');
+
+        // トラッキング中の場合は即座にFirestoreに送信
+        if (_isTracking) {
+          print('トラッキング中: 位置情報を即座に送信');
+          _sendLocation();
+        }
       },
       onError: (e) {
         print('位置情報ストリーム エラー: $e');
@@ -192,15 +198,6 @@ class LocationService {
 
     // 初回実行
     await _sendLocation();
-
-    // ストリーム監視中の位置情報変化も即座に送信（より高頻度での更新）
-    _positionStreamSubscription?.onData((Position position) {
-      if (_isTracking && _lastPosition != position) {
-        print('位置情報ストリーム更新: 新しい位置を送信します');
-        // 非同期で送信（ブロッキングしない）
-        _sendLocation();
-      }
-    });
   }
 
   /// トラッキング停止（データ送信停止）

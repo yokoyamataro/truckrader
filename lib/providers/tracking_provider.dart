@@ -152,12 +152,29 @@ class TrackingProvider with ChangeNotifier {
   /// 位置情報の定期更新（UI用）
   /// 取得済みの位置情報をUIに反映
   void _startPositionUpdates() {
+    print('TrackingProvider: _startPositionUpdates 開始');
     // 定期的に現在位置を更新
     Future.delayed(const Duration(seconds: 1), () async {
+      print('TrackingProvider: 定期更新実行 isFetching=${_locationService.isFetching}');
       // 位置情報取得中であれば更新
       if (_locationService.isFetching) {
-        _currentPosition = _locationService.lastPosition;
-        notifyListeners();
+        final newPosition = _locationService.lastPosition;
+        print('TrackingProvider: lastPosition = $newPosition');
+        if (newPosition != null) {
+          // 位置が変わったかチェック（緯度・経度で比較）
+          final positionChanged = _currentPosition == null ||
+              _currentPosition!.latitude != newPosition.latitude ||
+              _currentPosition!.longitude != newPosition.longitude;
+
+          _currentPosition = newPosition;
+
+          if (positionChanged) {
+            print('TrackingProvider: 位置更新 ${_currentPosition?.latitude}, ${_currentPosition?.longitude}');
+          }
+
+          // 位置が変わっていなくてもnotifyListeners()を呼ぶ（UIが確実に更新されるように）
+          notifyListeners();
+        }
       }
       _startPositionUpdates(); // 再帰的に呼び出し
     });

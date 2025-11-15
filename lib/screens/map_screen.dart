@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -19,6 +20,18 @@ class _MapScreenState extends State<MapScreen> {
   GoogleMapController? _mapController;
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};  // ルート表示用
+  Timer? _updateTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // 1秒ごとに画面を強制更新
+    _updateTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
 
   @override
   void didChangeDependencies() {
@@ -51,8 +64,9 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Consumer<TrackingProvider>(
       builder: (context, provider, child) {
-        // Provider から現在位置を取得
-        final position = provider.currentPosition;
+        // LocationService から直接最新位置を取得（リアルタイム更新）
+        final locationService = LocationService();
+        final position = locationService.lastPosition ?? provider.currentPosition;
 
         if (position == null) {
           return const Center(
@@ -152,7 +166,10 @@ class _MapScreenState extends State<MapScreen> {
 
   /// 状態パネル
   Widget _buildStatusPanel(BuildContext context, TrackingProvider provider, Position position) {
-    final speed = position.speed * 3.6; // m/s -> km/h
+    // 最新の位置情報を取得（リアルタイム更新）
+    final locationService = LocationService();
+    final currentPosition = locationService.lastPosition ?? position;
+    final speed = currentPosition.speed * 3.6; // m/s -> km/h
     final isTracking = provider.isTracking;
 
     return Container(
@@ -226,13 +243,13 @@ class _MapScreenState extends State<MapScreen> {
                   _buildInfoRow(
                     icon: Icons.location_on,
                     label: '緯度',
-                    value: position.latitude.toStringAsFixed(6),
+                    value: currentPosition.latitude.toStringAsFixed(6),
                   ),
                   const SizedBox(height: 8),
                   _buildInfoRow(
                     icon: Icons.location_on,
                     label: '経度',
-                    value: position.longitude.toStringAsFixed(6),
+                    value: currentPosition.longitude.toStringAsFixed(6),
                   ),
                   const SizedBox(height: 16),
 
@@ -580,6 +597,7 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void dispose() {
+    _updateTimer?.cancel();
     _mapController?.dispose();
     super.dispose();
   }
