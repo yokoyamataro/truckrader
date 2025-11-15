@@ -57,6 +57,15 @@ class TrackingProvider with ChangeNotifier {
       // ポイントデータのリスニングを開始
       startListeningToPoints();
 
+      // 車両の目的地を読み込み
+      if (_selectedVehicleId != null) {
+        _selectedDestinationId = await _firebaseService.getDestinationId(_selectedVehicleId!);
+        // 目的地が設定されている場合、ルートを計算
+        if (_selectedDestinationId != null) {
+          await _loadAndCalculateRouteToDestination();
+        }
+      }
+
       // 位置情報取得を開始（アプリ起動時）
       await _locationService.startFetching();
 
@@ -198,6 +207,10 @@ class TrackingProvider with ChangeNotifier {
     try {
       _firebaseService.getPointsStream().listen((points) {
         _points = points;
+        // ポイントが読み込まれた後、目的地が設定されていればルートを計算
+        if (_selectedDestinationId != null && _currentRoute == null && _points.isNotEmpty) {
+          _loadAndCalculateRouteToDestination();
+        }
         notifyListeners();
       });
     } catch (e) {
@@ -286,5 +299,23 @@ class TrackingProvider with ChangeNotifier {
   void clearRoute() {
     _currentRoute = null;
     notifyListeners();
+  }
+
+  /// 目的地IDからポイント情報を取得してルートを計算
+  Future<void> _loadAndCalculateRouteToDestination() async {
+    try {
+      if (_selectedDestinationId == null) return;
+
+      // ポイント一覧から目的地を検索
+      final destination = _points.firstWhere(
+        (point) => point.id == _selectedDestinationId,
+        orElse: () => throw Exception('目的地が見つかりません'),
+      );
+
+      // ルートを計算
+      await calculateRoute(destination);
+    } catch (e) {
+      print('目的地ルート計算エラー: $e');
+    }
   }
 }

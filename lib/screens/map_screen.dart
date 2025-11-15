@@ -28,7 +28,9 @@ class _MapScreenState extends State<MapScreen> {
     // 1秒ごとに画面を強制更新
     _updateTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
-        setState(() {});
+        setState(() {
+          _updateMarker(); // マーカーも更新
+        });
       }
     });
   }
@@ -58,6 +60,97 @@ class _MapScreenState extends State<MapScreen> {
     final provider = Provider.of<TrackingProvider>(context, listen: false);
     final position = provider.currentPosition;
     final points = provider.points;
+
+    if (position == null) return;
+
+    _markers.clear();
+
+    // 現在位置マーカー（車両）
+    final heading = position.heading;
+    _markers.add(
+      Marker(
+        markerId: const MarkerId('current_location'),
+        position: LatLng(position.latitude, position.longitude),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+        infoWindow: InfoWindow(
+          title: '現在位置',
+          snippet: '${_getVehicleIcon(heading)} ${(position.speed * 3.6).toStringAsFixed(1)}km/h',
+        ),
+      ),
+    );
+
+    // ポイントマーカーを追加
+    for (final point in points) {
+      final isDestination = provider.selectedDestinationId == point.id;
+      _markers.add(
+        Marker(
+          markerId: MarkerId(point.id),
+          position: LatLng(point.latitude, point.longitude),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            isDestination ? BitmapDescriptor.hueRed : BitmapDescriptor.hueGreen,
+          ),
+          infoWindow: InfoWindow(
+            title: point.name,
+            snippet: point.description ?? '',
+          ),
+          onTap: () => _onMarkerTapped(point, provider),
+        ),
+      );
+    }
+  }
+
+  /// マーカータップ時の処理
+  void _onMarkerTapped(Point point, TrackingProvider provider) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(point.name),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (point.description != null && point.description!.isNotEmpty)
+              Text(point.description!),
+            const SizedBox(height: 8),
+            Text('緯度: ${point.latitude.toStringAsFixed(6)}'),
+            Text('経度: ${point.longitude.toStringAsFixed(6)}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('キャンセル'),
+          ),
+          if (provider.selectedDestinationId == point.id)
+            ElevatedButton(
+              onPressed: () async {
+                await provider.clearDestination();
+                provider.clearRoute();
+                setState(() {
+                  _updateMarker();
+                });
+                if (context.mounted) Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+              ),
+              child: const Text('目的地解除'),
+            )
+          else
+            ElevatedButton(
+              onPressed: () async {
+                await provider.setDestination(point.id);
+                await provider.calculateRoute(point);
+                setState(() {
+                  _updateMarker();
+                });
+                if (context.mounted) Navigator.pop(context);
+              },
+              child: const Text('目的地に設定'),
+            ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -124,6 +217,8 @@ class _MapScreenState extends State<MapScreen> {
           builder: (context, provider, child) {
             // ルート情報が更新されたらポリラインを更新
             _updatePolylines(provider);
+            // ポイントやルートが変更されたらマーカーも更新
+            _updateMarker();
 
             return GoogleMap(
               onMapCreated: (GoogleMapController controller) {

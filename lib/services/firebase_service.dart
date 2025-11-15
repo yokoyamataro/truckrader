@@ -264,4 +264,23 @@ class FirebaseService {
       throw Exception('目的地クリアエラー: $e');
     }
   }
+
+  /// 車両の目的地IDを取得
+  Future<String?> getDestinationId(String vehicleId) async {
+    try {
+      final doc = await _firestore
+          .collection('vehicle_locations')
+          .doc(vehicleId)
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data();
+        return data?['destinationId'] as String?;
+      }
+      return null;
+    } catch (e) {
+      print('目的地ID取得エラー: $e');
+      return null;
+    }
+  }
 }
