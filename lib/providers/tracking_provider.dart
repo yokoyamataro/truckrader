@@ -7,6 +7,7 @@ import '../services/firebase_service.dart';
 import '../services/route_service.dart';
 import '../models/point.dart';
 import '../models/route.dart';
+import '../models/vehicle_location.dart';
 
 /// トラッキング状態を管理するProvider
 class TrackingProvider with ChangeNotifier {
@@ -26,6 +27,7 @@ class TrackingProvider with ChangeNotifier {
   List<Point> _points = [];
   RouteInfo? _currentRoute;  // 現在のルート情報
   bool _isCalculatingRoute = false;  // ルート計算中フラグ
+  List<VehicleLocation> _otherVehicles = [];  // 他車両の位置情報
 
   bool get isTracking => _isTracking;
   Position? get currentPosition => _currentPosition;
@@ -38,6 +40,7 @@ class TrackingProvider with ChangeNotifier {
   RouteInfo? get currentRoute => _currentRoute;
   bool get isCalculatingRoute => _isCalculatingRoute;
   String get selectedDriverName => _selectedDriverId != null ? (_driverNameMap[_selectedDriverId] ?? _selectedDriverId ?? 'セットなし') : 'セットなし';
+  List<VehicleLocation> get otherVehicles => _otherVehicles;
 
   /// 初期化（SharedPreferences から前回の選択を読み込み）
   /// 位置情報取得も開始
@@ -56,6 +59,9 @@ class TrackingProvider with ChangeNotifier {
 
       // ポイントデータのリスニングを開始
       startListeningToPoints();
+
+      // 他車両の位置情報リスニングを開始
+      startListeningToOtherVehicles();
 
       // 車両の目的地を読み込み
       if (_selectedVehicleId != null) {
@@ -316,6 +322,25 @@ class TrackingProvider with ChangeNotifier {
       await calculateRoute(destination);
     } catch (e) {
       print('目的地ルート計算エラー: $e');
+    }
+  }
+
+  /// 他車両の位置情報リスニングを開始
+  void startListeningToOtherVehicles() {
+    try {
+      _firebaseService.getVehicleLocationsStream().listen((vehicles) {
+        // 自車両以外で、status が "stopped" 以外の車両のみフィルタリング
+        _otherVehicles = vehicles.where((vehicle) {
+          final isNotSelf = vehicle.vehicleId != _selectedVehicleId;
+          final isNotStopped = vehicle.status != 'stopped';
+          return isNotSelf && isNotStopped;
+        }).toList();
+
+        print('他車両情報更新: ${_otherVehicles.length}台');
+        notifyListeners();
+      });
+    } catch (e) {
+      print('他車両リスニングエラー: $e');
     }
   }
 }

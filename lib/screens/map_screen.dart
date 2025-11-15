@@ -60,31 +60,18 @@ class _MapScreenState extends State<MapScreen> {
     final provider = Provider.of<TrackingProvider>(context, listen: false);
     final position = provider.currentPosition;
     final points = provider.points;
+    final otherVehicles = provider.otherVehicles;
 
     if (position == null) return;
 
     _markers.clear();
-
-    // 現在位置マーカー（車両）
-    final heading = position.heading;
-    _markers.add(
-      Marker(
-        markerId: const MarkerId('current_location'),
-        position: LatLng(position.latitude, position.longitude),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-        infoWindow: InfoWindow(
-          title: '現在位置',
-          snippet: '${_getVehicleIcon(heading)} ${(position.speed * 3.6).toStringAsFixed(1)}km/h',
-        ),
-      ),
-    );
 
     // ポイントマーカーを追加
     for (final point in points) {
       final isDestination = provider.selectedDestinationId == point.id;
       _markers.add(
         Marker(
-          markerId: MarkerId(point.id),
+          markerId: MarkerId('point_${point.id}'),
           position: LatLng(point.latitude, point.longitude),
           icon: BitmapDescriptor.defaultMarkerWithHue(
             isDestination ? BitmapDescriptor.hueRed : BitmapDescriptor.hueGreen,
@@ -94,6 +81,21 @@ class _MapScreenState extends State<MapScreen> {
             snippet: point.description ?? '',
           ),
           onTap: () => _onMarkerTapped(point, provider),
+        ),
+      );
+    }
+
+    // 他車両のマーカーを追加（status が "stopped" 以外）
+    for (final vehicle in otherVehicles) {
+      _markers.add(
+        Marker(
+          markerId: MarkerId('vehicle_${vehicle.vehicleId}'),
+          position: LatLng(vehicle.latitude, vehicle.longitude),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+          infoWindow: InfoWindow(
+            title: '車両: ${vehicle.vehicleId}',
+            snippet: '${vehicle.speed.toStringAsFixed(1)}km/h - ${vehicle.status}',
+          ),
         ),
       );
     }
